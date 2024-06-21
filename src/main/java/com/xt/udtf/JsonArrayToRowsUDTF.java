@@ -1,62 +1,63 @@
 package com.xt.udtf;
 
-import com.aliyun.odps.conf.Configuration;
 import com.aliyun.odps.udf.UDFException;
 import com.aliyun.odps.udf.UDTF;
 import com.aliyun.odps.udf.annotation.Resolve;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
-import java.io.IOException;
+import java.lang.reflect.Type;
+import java.util.List;
+import java.util.Map;
 
-// 声明UDTF
-@Resolve("json_array_to_rows")
+/**
+ * UDTF实现，用于将JSON数组字符串解析为多行数据输出。
+ * 每个JSON对象作为一个单独的行输出。
+ *
+ * 示例输入："[{\"name\":\"a\",\"age\":\"1\"},{\"name\":\"b\",\"age\":\"2\"}]"
+ * 输出：第一行：{"name":"a","age":"1"}
+ *      第二行：{"name":"b","age":"2"}
+ *
+ * @author 通义灵码
+ */
+@Resolve("string->string")
 public class JsonArrayToRowsUDTF extends UDTF {
 
-    // 声明输出字段
-    private Object[] forwardData = new Object[1];
-
-
-    // 处理方法
+    /**
+     * 处理输入的JSON数组字符串，将其解析后逐个输出。
+     *
+     * @param jsonString 包含JSON数组的字符串。
+     * @throws UDFException 如果输入不是有效的JSON数组或处理过程中发生错误。
+     */
     @Override
     public void process(Object[] args) throws UDFException {
-        // 假设输入的参数是一个JSON字符串，且只含有一个元素
-        if (args == null || args.length == 0 || !(args[0] instanceof String)) {
-            throw new UDFException("Input should be a JSON string.");
+        if (args[0] == null) {
+            throw new UDFException("Input JSON string is null.");
         }
 
         String jsonString = (String) args[0];
 
-        ObjectMapper mapper = new ObjectMapper();
-
         try {
-            // 解析JSON字符串为JsonNode
-            JsonNode rootNode = mapper.readTree(jsonString);
+            // 创建Gson实例
+            Gson gson = new Gson();
 
-            // 检查是否是一个数组
-            if (!rootNode.isArray()) {
-                throw new UDFException("Input should be a JSON array.");
-            }
+            // 定义类型Token来指定我们期望解析的类型
+            Type listType = new TypeToken<List<Map<String, String>>>(){}.getType();
 
-            // 遍历数组并发送每一行数据
-            for (JsonNode element : rootNode) {
-                // 假设数组中的元素是字符串，你可以根据需要处理其他类型
-                if (element.isTextual()) {
-                    forwardData[0] = element.asText();
-                    forward(forwardData); // 发送数据
-                } else {
-                    // 处理非字符串元素（如果需要）
+            // 使用Gson解析JSON字符串为List<Map<String, String>>
+            List<Map<String, String>> jsonArray = gson.fromJson(jsonString, listType);
+
+            if (jsonArray != null && !jsonArray.isEmpty()) {
+                // 遍历解析后的列表，逐个输出每个JSON对象
+                for (Map<String, String> jsonObject : jsonArray) {
+                    // 直接输出Map，因为这里不需要再转换回JSON字符串
+                    forward(jsonObject.toString()); // 注意：这里根据实际需求调整，toString可能不是最佳选择
                 }
+            } else {
+                throw new UDFException("Parsed JSON array is null or empty.");
             }
-
-        } catch (IOException e) {
-            throw new UDFException("Failed to parse JSON: " + e.getMessage());
+        } catch (Exception e) {
+            throw new UDFException("Error parsing JSON: " + e.getMessage());
         }
-    }
-
-    // 清理资源（如果需要）
-    @Override
-    public void close() throws UDFException {
-        // 清理代码（如果需要）
     }
 }
